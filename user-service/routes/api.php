@@ -27,15 +27,26 @@ Route::apiResource('users', UserController::class);
 
 Route::prefix('roles')->group(function () {
     Route::get('/', [RolePermissionController::class, 'getRoles']);
+    Route::get('/{id}', [RolePermissionController::class, 'showRole']);
     Route::post('/', [RolePermissionController::class, 'createRole']);
+    Route::put('/{id}', [RolePermissionController::class, 'updateRole']);
     Route::delete('/{id}', [RolePermissionController::class, 'deleteRole']);
     Route::post('/{id}/permissions', [RolePermissionController::class, 'assignPermissionsToRole']);
 });
 
 Route::prefix('permissions')->group(function () {
     Route::get('/', [RolePermissionController::class, 'getPermissions']);
+    Route::get('/{id}', [RolePermissionController::class, 'showPermission']);
     Route::post('/', [RolePermissionController::class, 'createPermission']);
+    Route::put('/{id}', [RolePermissionController::class, 'updatePermission']);
     Route::delete('/{id}', [RolePermissionController::class, 'deletePermission']);
+});
+
+Route::prefix('users/{id}')->group(function () {
+    Route::get('/roles', [RolePermissionController::class, 'getUserRoles']);
+    Route::post('/roles', [RolePermissionController::class, 'assignRoles']);
+    Route::get('/permissions', [RolePermissionController::class, 'getUserPermissions']);
+    Route::post('/permissions', [RolePermissionController::class, 'assignPermissions']);
 });
 
 });

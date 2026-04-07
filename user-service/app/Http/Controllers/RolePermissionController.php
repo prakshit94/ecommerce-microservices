@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -14,11 +15,25 @@ class RolePermissionController extends Controller
         return response()->json(Role::with('permissions')->get());
     }
 
+    public function showRole($id)
+    {
+        $role = Role::with('permissions')->findOrFail($id);
+        return response()->json($role);
+    }
+
     public function createRole(Request $request)
     {
         $request->validate(['name' => 'required|string|unique:roles']);
         $role = Role::create(['name' => $request->name]);
         return response()->json($role, 201);
+    }
+
+    public function updateRole(Request $request, $id)
+    {
+        $role = Role::findOrFail($id);
+        $request->validate(['name' => 'required|string|unique:roles,name,' . $role->id]);
+        $role->update(['name' => $request->name]);
+        return response()->json($role);
     }
 
     public function deleteRole($id)
@@ -42,6 +57,12 @@ class RolePermissionController extends Controller
         return response()->json(Permission::all());
     }
 
+    public function showPermission($id)
+    {
+        $permission = Permission::findOrFail($id);
+        return response()->json($permission);
+    }
+
     public function createPermission(Request $request)
     {
         $request->validate(['name' => 'required|string|unique:permissions']);
@@ -49,9 +70,46 @@ class RolePermissionController extends Controller
         return response()->json($permission, 201);
     }
 
+    public function updatePermission(Request $request, $id)
+    {
+        $permission = Permission::findOrFail($id);
+        $request->validate(['name' => 'required|string|unique:permissions,name,' . $permission->id]);
+        $permission->update(['name' => $request->name]);
+        return response()->json($permission);
+    }
+
     public function deletePermission($id)
     {
         Permission::findOrFail($id)->delete();
         return response()->json(null, 204);
+    }
+
+    // === USER ROLES & PERMISSIONS ===
+    public function getUserRoles($userId)
+    {
+        $user = User::findOrFail($userId);
+        return response()->json($user->getRoleNames());
+    }
+
+    public function assignRoles(Request $request, $userId)
+    {
+        $request->validate(['roles' => 'required|array']);
+        $user = User::findOrFail($userId);
+        $user->syncRoles($request->roles);
+        return response()->json($user->load('roles'));
+    }
+
+    public function getUserPermissions($userId)
+    {
+        $user = User::findOrFail($userId);
+        return response()->json($user->getAllPermissions()->pluck('name'));
+    }
+
+    public function assignPermissions(Request $request, $userId)
+    {
+        $request->validate(['permissions' => 'required|array']);
+        $user = User::findOrFail($userId);
+        $user->syncPermissions($request->permissions);
+        return response()->json($user->load('permissions'));
     }
 }

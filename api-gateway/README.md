@@ -1,59 +1,102 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🚀 API Gateway Service
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The API Gateway is the single entry point for all client requests in the eCommerce microservices architecture. It handles authentication, request routing, and header forwarding to downstream services.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🛠 Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Centralized Authentication**: Verifies JWT tokens and extracts user claims.
+- **Request Proxying**: Routes requests to `auth-service` and `user-service`.
+- **Security**: Strips client-side `X-User-*` headers to prevent spoofing and injects verified user data.
+- **Consolidated API**: Provides a unified interface for the frontend.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Prerequisites
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- PHP 8.2+
+- Composer
+- SQLite (for local development)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## ⚙️ Installation & Setup
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+1. **Clone and Install**:
+   ```bash
+   composer install
+   ```
 
-### Premium Partners
+2. **Environment Configuration**:
+   Create a `.env` file and configure the following critical variables:
+   ```ini
+   APP_URL=http://localhost:8000
+   
+   # JWT and Gateway Security
+   JWT_SECRET=your_jwt_secret_here
+   GATEWAY_SECRET=your_strong_gateway_secret_here
+   
+   # Downstream Service URLs
+   AUTH_SERVICE_URL=http://localhost:8001/api
+   USER_SERVICE_URL=http://localhost:8002/api
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+3. **Start the Service**:
+   ```bash
+   php artisan serve --port=8000
+   ```
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 🔌 API Routes & Proxying
 
-## Code of Conduct
+The Gateway proxies requests based on the URL prefix.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 🔐 Authentication Proxy (`/api/auth/*`)
+Proxies to `auth-service` at `PORT 8001`.
 
-## Security Vulnerabilities
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Register new user | No |
+| `POST` | `/api/auth/login` | Login and get JWT | No |
+| `POST` | `/api/auth/logout` | Logout user | Yes |
+| `POST` | `/api/auth/refresh` | Refresh JWT token | Yes |
+| `GET` | `/api/auth/me` | Get current user info | Yes |
+| `POST` | `/api/auth/change-password` | Change user password | Yes |
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 👤 User & RBAC Proxy (`/api/users/*`, `/api/roles/*`, `/api/permissions/*`)
+Proxies to `user-service` at `PORT 8002`.
 
-## License
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/users` | List all users | Yes |
+| `GET` | `/api/users/{id}` | Get user details | Yes |
+| `PUT` | `/api/users/{id}` | Update user info | Yes |
+| `DELETE` | `/api/users/{id}` | Delete user | Yes |
+| `GET` | `/api/roles` | List all roles | Yes |
+| `POST` | `/api/roles` | Create new role | Yes |
+| `GET` | `/api/permissions` | List all permissions | Yes |
+| ... | ... | ... | ... |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+## 🛡 Security Mechanism
+
+### JWT Verification
+The Gateway intercepts requests to protected routes (via `JwtAuthGateway` middleware). It validates the token and extracts the following claims:
+- `user_id`
+- `email`
+- `roles`
+- `permissions`
+
+### Header Forwarding
+Once verified, the Gateway forwards the request to downstream services with the following headers:
+- `X-User-Id`: The unique ID of the authenticated user.
+- `X-User-Email`: The user's email.
+- `X-User-Roles`: JSON encoded list of roles.
+- `X-User-Permissions`: JSON encoded list of direct permissions.
+- `X-Gateway-Secret`: A shared secret to verify the request originated from the Gateway.
+
+> [!CAUTION]
+> Downstream services **must** verify the `X-Gateway-Secret` to ensure the security of relayed user information.

@@ -1,59 +1,115 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 👤 User Service
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The User Service manages user profiles, roles, and permissions in the eCommerce microservices architecture. It acts as the source of truth for Role-Based Access Control (RBAC) and provides claims to the Auth Service during JWT generation.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🛠 Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Profile Management**: CRUD operations for user account information.
+- **RBAC (Spatie)**: Full Role and Permission management using `spatie/laravel-permission`.
+- **Claims Provider**: Serves internal requests from Auth Service to extract user roles/permissions as JWT claims.
+- **Internal Security**: Validates the `X-Gateway-Secret` for all inter-service requests.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Prerequisites
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- PHP 8.2+
+- Composer
+- SQLite (for local development)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## ⚙️ Installation & Setup
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+1. **Install Dependencies**:
+   ```bash
+   composer install
+   ```
 
-### Premium Partners
+2. **Environment Configuration**:
+   Configure the following in your `.env` file:
+   ```ini
+   APP_URL=http://localhost:8002/api
+   
+   # Gateway Security Secret
+   GATEWAY_SECRET=your_strong_gateway_secret_here
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+3. **Database Setup**:
+   ```bash
+   php artisan migrate
+   ```
 
-## Contributing
+4. **Start the Service**:
+   ```bash
+   php artisan serve --port=8002
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+## 🔌 API Endpoints
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 👤 User Profile Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/users/{id?}`
+Standard CRUD for managing users. Integrated with Auth Service during registration.
 
-## Security Vulnerabilities
+### 🎭 Role Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/roles/{id?}`
+CRUD for administrative roles (e.g., `admin`, `customer`, `manager`).
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- **Create Role**: `POST /api/roles`
+  ```json
+  { "name": "editor" }
+  ```
 
-## License
+- **Assign Permissions to Role**: `POST /api/roles/{id}/permissions`
+  ```json
+  { "permissions": ["edit-products", "view-orders"] }
+  ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 🔐 Permission Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/permissions/{id?}`
+CRUD for individual system permissions.
+
+---
+
+### 🛡 User RBAC Assignment
+
+#### 1. Assign Roles to User
+**Endpoint**: `POST /api/users/{userId}/roles`
+Synchronizes specific roles to a user account.
+
+- **Body**:
+  ```json
+  { "roles": ["admin", "customer"] }
+  ```
+
+#### 2. Assign Direct Permissions to User
+**Endpoint**: `POST /api/users/{userId}/permissions`
+Synchronizes specific direct permissions to a user account.
+
+- **Body**:
+  ```json
+  { "permissions": ["refund-orders"] }
+  ```
+
+---
+
+## 🔄 Internal Communication
+
+### 🔑 Claims Extraction
+**Endpoint**: `GET /api/users/{id}/claims`
+This is an internal route used by the **Auth Service** during login to fetch the user's roles and permissions for inclusion in the JWT token.
+
+- **Returns**:
+  ```json
+  {
+    "roles": ["admin"],
+    "permissions": ["edit-products", "view-orders"]
+  }
+  ```
+
+> [!IMPORTANT]
+> All users and roles must be created within this service to maintain integrity. The `auth-service` manages password logic, but the `user-service` manages the actual account identity and access levels.

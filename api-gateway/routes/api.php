@@ -26,7 +26,7 @@ function proxyRequest(Request $request, string $baseUrl, string $path): Response
 
 // 🔓 Public Routes Proxy (Auth Service)
 Route::any('/auth/{any?}', function (Request $request, $any = '') {
-    $baseUrl = env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api/auth');
+    $baseUrl = env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth';
     return proxyRequest($request, $baseUrl, $any);
 })->where('any', '.*');
 
@@ -35,17 +35,17 @@ Route::any('/auth/{any?}', function (Request $request, $any = '') {
 Route::middleware([\App\Http\Middleware\JwtAuthGateway::class])->group(function () {
     
     Route::any('/users/{any?}', function (Request $request, $any = '') {
-        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api/users');
+        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api') . '/users';
         return proxyRequest($request, $baseUrl, $any);
     })->where('any', '.*');
 
     Route::any('/roles/{any?}', function (Request $request, $any = '') {
-        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api/roles');
+        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api') . '/roles';
         return proxyRequest($request, $baseUrl, $any);
     })->where('any', '.*');
 
     Route::any('/permissions/{any?}', function (Request $request, $any = '') {
-        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api/permissions');
+        $baseUrl = env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api') . '/permissions';
         return proxyRequest($request, $baseUrl, $any);
     })->where('any', '.*');
 

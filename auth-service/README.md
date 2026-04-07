@@ -1,59 +1,125 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🔐 Auth Service
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The Auth Service manages user authentication, JWT token generation, and password synchronization in the eCommerce microservices architecture. It acts as the primary source of truth for user identification during login and registration.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🛠 Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **JWT Authentication**: Issue, refresh, and invalidate tokens using `tymon/jwt-auth`.
+- **User Registration**: Create new accounts and sync details to the `user-service`.
+- **Password Management**: Change passwords with current credential verification.
+- **Role/Permission Extraction**: Fetches user claims from `user-service` and packs them into the JWT for efficient role checking at the Gateway.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Prerequisites
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- PHP 8.2+
+- Composer
+- SQLite (for local development)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## ⚙️ Installation & Setup
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+1. **Install Dependencies**:
+   ```bash
+   composer install
+   ```
 
-### Premium Partners
+2. **Environment Configuration**:
+   Configure the following in your `.env` file:
+   ```ini
+   APP_URL=http://localhost:8001/api/auth
+   
+   # Shared Secrets
+   JWT_SECRET=your_jwt_secret_here
+   GATEWAY_SECRET=your_strong_gateway_secret_here
+   
+   # User Service Configuration
+   USER_SERVICE_URL=http://localhost:8002/api
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+3. **Database Setup**:
+   ```bash
+   php artisan migrate
+   ```
 
-## Contributing
+4. **Start the Service**:
+   ```bash
+   php artisan serve --port=8001
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+## 🔌 API Endpoints
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 📝 User Registration
+**Endpoint**: `POST /api/auth/register`
+Creates a user in the local database and synchronizes the record to the `user-service`.
 
-## Security Vulnerabilities
+- **Body**:
+  ```json
+  {
+    "name": "Test User",
+    "email": "test@example.com",
+    "password": "password123"
+  }
+  ```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 🔑 User Login
+**Endpoint**: `POST /api/auth/login`
+Generates a JWT token containing user ID, email, roles, and permissions.
 
-## License
+- **Body**:
+  ```json
+  {
+    "email": "test@example.com",
+    "password": "password123"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+  }
+  ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 👤 Current User (Me)
+**Endpoint**: `GET /api/auth/me`
+Returns the authenticated user's profile details. Requires a valid JWT.
+
+### 🔄 Token Refresh
+**Endpoint**: `POST /api/auth/refresh`
+Generates a new JWT token using an existing, valid token.
+
+### 🚪 Logout
+**Endpoint**: `POST /api/auth/logout`
+Invalidates the current JWT token, effectively logging out the user.
+
+### 🛡 Change Password
+**Endpoint**: `POST /api/auth/change-password`
+Updates the user's password globally across services.
+
+- **Body**:
+  ```json
+  {
+    "current_password": "old_password_here",
+    "new_password": "new_password_123",
+    "new_password_confirmation": "new_password_123"
+  }
+  ```
+
+---
+
+## 🔄 Service Synchronization
+
+### User Sync on Registration
+On a successful registration, the Auth Service makes an internal `POST` request to `USER_SERVICE_URL/users` with the user ID and details. This ensures both services stay in sync for profile and RBAC management.
+
+### User Sync on Password Change
+When a password is changed, the Auth Service performs an internal `PUT` request to `USER_SERVICE_URL/users/{id}` to ensure the `user-service` is updated with the new encrypted password hash.
+
+> [!IMPORTANT]
+> All inter-service communication requires the `X-Gateway-Secret` header for security.

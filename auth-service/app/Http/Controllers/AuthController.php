@@ -169,4 +169,45 @@ class AuthController extends Controller
             ? response()->json(['message' => __($status)])
             : response()->json(['error' => __($status)], 422);
     }
+
+    /**
+     * Change Password
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $user = auth()->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['error' => 'Current password does not match.'], 422);
+        }
+
+        // Update locally
+        $user->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        // Sync to user-service
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(5)
+                ->withHeaders([
+                    'X-Gateway-Secret' => env('GATEWAY_SECRET')
+                ])
+                ->put(env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api') . '/users/' . $user->id, [
+                    'password' => $request->new_password,
+                ]);
+
+            if (!$response->successful()) {
+                \Illuminate\Support\Facades\Log::error('Failed to sync password change to user-service: ' . $response->body());
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to sync password change to user-service: ' . $e->getMessage());
+        }
+
+        return response()->json(['message' => 'Password changed successfully.']);
+    }
 }
