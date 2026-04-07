@@ -10,6 +10,7 @@ The Auth Service manages user authentication, JWT token generation, and password
 - **User Registration**: Create new accounts and sync details to the `user-service`.
 - **Password Management**: Change passwords with current credential verification.
 - **Role/Permission Extraction**: Fetches user claims from `user-service` and packs them into the JWT for efficient role checking at the Gateway.
+- **Granular RBAC Integration**: JWT claims now support 18+ specific permissions.
 
 ---
 
@@ -43,7 +44,7 @@ The Auth Service manages user authentication, JWT token generation, and password
 
 3. **Database Setup**:
    ```bash
-   php artisan migrate
+   php artisan migrate --seed
    ```
 
 4. **Start the Service**:
@@ -53,10 +54,23 @@ The Auth Service manages user authentication, JWT token generation, and password
 
 ---
 
+## 🧪 Sample Test Personas
+
+Use these pre-configured accounts for testing with different access levels:
+
+| User | Email | Password | Role |
+| :--- | :--- | :--- | :--- |
+| **Super Admin** | `admin@example.com` | `admin123` | **Admin** |
+| **Manager** | `manager@example.com` | `password123` | **Manager** |
+| **Editor** | `editor@example.com` | `password123` | **Editor** |
+| **Viewer** | `viewer@example.com` | `password123` | **Viewer** |
+
+---
+
 ## 🔌 API Endpoints
 
 ### 📝 User Registration
-**Endpoint**: `POST /api/auth/register`
+**Endpoint**: `POST /api/auth/register` (Public)
 Creates a user in the local database and synchronizes the record to the `user-service`.
 
 - **Body**:
@@ -69,7 +83,7 @@ Creates a user in the local database and synchronizes the record to the `user-se
   ```
 
 ### 🔑 User Login
-**Endpoint**: `POST /api/auth/login`
+**Endpoint**: `POST /api/auth/login` (Public)
 Generates a JWT token containing user ID, email, roles, and permissions.
 
 - **Body**:
@@ -79,27 +93,18 @@ Generates a JWT token containing user ID, email, roles, and permissions.
     "password": "password123"
   }
   ```
-- **Response**:
-  ```json
-  {
-    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-  }
-  ```
+- **Returns**: `{"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."}`
 
-### 👤 Current User (Me)
-**Endpoint**: `GET /api/auth/me`
+### 👤 Profile (Me)
+**Endpoint**: `GET /api/auth/me` (Protected)
 Returns the authenticated user's profile details. Requires a valid JWT.
 
-### 🔄 Token Refresh
-**Endpoint**: `POST /api/auth/refresh`
-Generates a new JWT token using an existing, valid token.
+### 🛡️ Reset Password
+**Endpoint**: `POST /api/auth/forgot-password` (Public)
+**Endpoint**: `POST /api/auth/reset-password` (Public)
 
-### 🚪 Logout
-**Endpoint**: `POST /api/auth/logout`
-Invalidates the current JWT token, effectively logging out the user.
-
-### 🛡 Change Password
-**Endpoint**: `POST /api/auth/change-password`
+### 💡 Change Password
+**Endpoint**: `POST /api/auth/change-password` (Protected)
 Updates the user's password globally across services.
 
 - **Body**:

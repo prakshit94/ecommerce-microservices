@@ -9,6 +9,7 @@ The API Gateway is the single entry point for all client requests in the eCommer
 - **Centralized Authentication**: Verifies JWT tokens and extracts user claims.
 - **Request Proxying**: Routes requests to `auth-service` and `user-service`.
 - **Security**: Strips client-side `X-User-*` headers to prevent spoofing and injects verified user data.
+- **Granular RBAC**: Supports 18+ specific permissions (e.g., `user-create`, `role-delete`).
 - **Consolidated API**: Provides a unified interface for the frontend.
 
 ---
@@ -64,20 +65,25 @@ Proxies to `auth-service` at `PORT 8001`.
 | `POST` | `/api/auth/refresh` | Refresh JWT token | Yes |
 | `GET` | `/api/auth/me` | Get current user info | Yes |
 | `POST` | `/api/auth/change-password` | Change user password | Yes |
+| `POST` | `/api/auth/forgot-password` | Request password reset | No |
+| `POST` | `/api/auth/reset-password` | Reset password with token | No |
 
 ### 👤 User & RBAC Proxy (`/api/users/*`, `/api/roles/*`, `/api/permissions/*`)
 Proxies to `user-service` at `PORT 8002`.
 
-| Method | Endpoint | Description | Auth Required |
+| Method | Endpoint | Description | Permission Required |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/users` | List all users | Yes |
-| `GET` | `/api/users/{id}` | Get user details | Yes |
-| `PUT` | `/api/users/{id}` | Update user info | Yes |
-| `DELETE` | `/api/users/{id}` | Delete user | Yes |
-| `GET` | `/api/roles` | List all roles | Yes |
-| `POST` | `/api/roles` | Create new role | Yes |
-| `GET` | `/api/permissions` | List all permissions | Yes |
-| ... | ... | ... | ... |
+| `GET` | `/api/users` | List all users | `user-list` |
+| `POST` | `/api/users` | Create new user | `user-create` |
+| `GET` | `/api/users/{id}` | Get user details | `user-view` |
+| `PUT` | `/api/users/{id}` | Update user info | `user-update` |
+| `DELETE` | `/api/users/{id}` | Delete user | `user-delete` |
+| `GET` | `/api/roles` | List all roles | `role-list` |
+| `POST` | `/api/roles` | Create new role | `role-create` |
+| `GET` | `/api/roles/{id}` | Get role details | `role-view` |
+| `PUT` | `/api/roles/{id}` | Update role name | `role-update` |
+| `DELETE` | `/api/roles/{id}` | Delete role | `role-delete` |
+| `POST` | `/api/roles/{id}/permissions` | Assign perms to role | `role-manage-permissions` |
 
 ---
 

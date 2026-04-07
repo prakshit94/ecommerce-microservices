@@ -77,7 +77,16 @@ try {
     throw $_
 }
 
-# --- 2. ROLES & PERMISSIONS ---
+# --- 2. ROLES & PERMISSIONS (REQUIRES ADMIN) ---
+Write-Host "`n--- TRANSITION: Logging in as Admin for RBAC Tests ---"
+$adminLoginResp = Request "Post" "/auth/login" $null @{
+    email = "admin@example.com"
+    password = "admin123"
+}
+$adminToken = $adminLoginResp.token
+$adminHeaders = @{ "Authorization" = "Bearer $adminToken" }
+$headers = $adminHeaders # Use admin headers for the rest of the script
+
 Write-Host "`n--- TEST 6: Create Role ---"
 $roleName = "Test-Role-$(Get-Random)"
 $role = Request "Post" "/roles" $headers @{ name = $roleName }
@@ -109,22 +118,24 @@ $userWithRoles = Request "Post" "/users/$userId/roles" $headers @{ roles = @($up
 Write-Host "Success. User roles: $($userWithRoles.roles[0].name)"
 
 Write-Host "`n--- TEST 12: Get User Roles ---"
-$uRolesNames = Request "Get" "/users/$userId/roles" $headers $null
-Write-Host "Success. Assigned Role names: $($uRolesNames -join ', ')"
+$uRoles = Request "Get" "/users/$userId/roles" $headers $null
+$uRoleNames = $uRoles | ForEach-Object { $_.name }
+Write-Host "Success. Assigned Role names: $($uRoleNames -join ', ')"
 
 Write-Host "`n--- TEST 13: Assign Permission to User ---"
 $userWithPerms = Request "Post" "/users/$userId/permissions" $headers @{ permissions = @($permName) }
 Write-Host "Success. User direct permissions: $($userWithPerms.permissions[0].name)"
 
 Write-Host "`n--- TEST 14: Get User Permissions ---"
-$uPermsNames = Request "Get" "/users/$userId/permissions" $headers $null
-Write-Host "Success. Assigned Permission names: $($uPermsNames -join ', ')"
+$uPerms = Request "Get" "/users/$userId/permissions" $headers $null
+$uPermNames = $uPerms | ForEach-Object { $_.name }
+Write-Host "Success. Assigned Permission names: $($uPermNames -join ', ')"
 
 # --- 4. CLEANUP (OPTIONAL but good for non-destructive tests) ---
 Write-Host "`n--- TEST 15: Delete Role & Permission ---"
-Request "Delete" "/roles/$roleId" $headers $null
-Request "Delete" "/permissions/$permId" $headers $null
-Write-Host "Success. Deleted test role and permission."
+$delRole = Request "Delete" "/roles/$roleId" $headers $null
+$delPerm = Request "Delete" "/permissions/$permId" $headers $null
+Write-Host "Success. Deleted test role (ID: $($delRole.id)) and permission (ID: $($delPerm.id))."
 
 Write-Host "`n--- TEST 16: Logout ---"
 $logoutResp = Request "Post" "/auth/logout" $headers $null

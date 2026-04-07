@@ -7,7 +7,7 @@ The User Service manages user profiles, roles, and permissions in the eCommerce 
 ## 🛠 Features
 
 - **Profile Management**: CRUD operations for user account information.
-- **RBAC (Spatie)**: Full Role and Permission management using `spatie/laravel-permission`.
+- **Granular RBAC (Spatie)**: 18+ specific permissions for fine-grained access control.
 - **Claims Provider**: Serves internal requests from Auth Service to extract user roles/permissions as JWT claims.
 - **Internal Security**: Validates the `X-Gateway-Secret` for all inter-service requests.
 
@@ -39,7 +39,7 @@ The User Service manages user profiles, roles, and permissions in the eCommerce 
 
 3. **Database Setup**:
    ```bash
-   php artisan migrate
+   php artisan migrate --seed
    ```
 
 4. **Start the Service**:
@@ -49,65 +49,62 @@ The User Service manages user profiles, roles, and permissions in the eCommerce 
 
 ---
 
-## 🔌 API Endpoints
+## 🛡️ Granular Permissions
 
-### 👤 User Profile Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/users/{id?}`
-Standard CRUD for managing users. Integrated with Auth Service during registration.
-
-### 🎭 Role Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/roles/{id?}`
-CRUD for administrative roles (e.g., `admin`, `customer`, `manager`).
-
-- **Create Role**: `POST /api/roles`
-  ```json
-  { "name": "editor" }
-  ```
-
-- **Assign Permissions to Role**: `POST /api/roles/{id}/permissions`
-  ```json
-  { "permissions": ["edit-products", "view-orders"] }
-  ```
-
-### 🔐 Permission Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/permissions/{id?}`
-CRUD for individual system permissions.
+| Category | Permissions |
+| :--- | :--- |
+| **Users** | `user-list`, `user-view`, `user-create`, `user-update`, `user-delete` |
+| **Roles** | `role-list`, `role-view`, `role-create`, `role-update`, `role-delete`, `role-assign`, `role-manage-permissions` |
+| **Permissions** | `permission-list`, `permission-view`, `permission-create`, `permission-update`, `permission-delete`, `permission-assign` |
 
 ---
 
-### 🛡 User RBAC Assignment
+## 🔌 API Endpoints (Proxied by Gateway)
+
+### 👤 User Profile Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/users/{id?}`
+
+- **List Users**: `GET /api/users` (Perm: `user-list`)
+- **Create User**: `POST /api/users` (Perm: `user-create`)
+- **Update User**: `PUT /api/users/{id}` (Perm: `user-update`)
+- **Delete User**: `DELETE /api/users/{id}` (Perm: `user-delete`)
+
+### 🎭 Role Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/roles/{id?}`
+
+- **Create Role**: `POST /api/roles` (Perm: `role-create`)
+- **Assign Perms to Role**: `POST /api/roles/{id}/permissions` (Perm: `role-manage-permissions`)
+
+### 🔑 Permission Management
+**Endpoint**: `GET|POST|PUT|DELETE /api/permissions/{id?}`
+
+- **Create Permission**: `POST /api/permissions` (Perm: `permission-create`)
+
+---
+
+### 🛡️ User RBAC Assignment
 
 #### 1. Assign Roles to User
-**Endpoint**: `POST /api/users/{userId}/roles`
-Synchronizes specific roles to a user account.
-
-- **Body**:
-  ```json
-  { "roles": ["admin", "customer"] }
-  ```
+**Endpoint**: `POST /api/users/{userId}/roles` (Perm: `role-assign`)
+- **Body**: `{ "roles": ["Admin", "Manager"] }`
 
 #### 2. Assign Direct Permissions to User
-**Endpoint**: `POST /api/users/{userId}/permissions`
-Synchronizes specific direct permissions to a user account.
-
-- **Body**:
-  ```json
-  { "permissions": ["refund-orders"] }
-  ```
+**Endpoint**: `POST /api/users/{userId}/permissions` (Perm: `permission-assign`)
+- **Body**: `{ "permissions": ["user-list", "user-view"] }`
 
 ---
 
 ## 🔄 Internal Communication
 
 ### 🔑 Claims Extraction
-**Endpoint**: `GET /api/users/{id}/claims`
+**Endpoint**: `GET /api/users/{id}/claims` (Internal)
 This is an internal route used by the **Auth Service** during login to fetch the user's roles and permissions for inclusion in the JWT token.
 
 - **Returns**:
   ```json
   {
-    "roles": ["admin"],
-    "permissions": ["edit-products", "view-orders"]
+    "roles": ["Admin"],
+    "permissions": ["user-list", "user-view", "role-list"]
   }
   ```
 

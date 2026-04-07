@@ -50,7 +50,7 @@ class UserController extends Controller
             $user->syncRoles($validated['roles']);
         }
 
-        return response()->json($user->load('roles'), 201);
+        return response()->json($user->load('roles', 'permissions'), 201);
     }
 
     public function update(Request $request, $id)
@@ -80,7 +80,11 @@ class UserController extends Controller
     public function destroy($id)
     {
         $user = User::findOrFail($id);
+        $id = $user->id;
         $user->delete();
-        return response()->json(null, 204);
+        return response()->json([
+            'message' => 'User deleted successfully',
+            'id' => $id
+        ]);
     }
 }

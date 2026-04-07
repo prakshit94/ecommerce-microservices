@@ -25,7 +25,7 @@ class RolePermissionController extends Controller
     {
         $request->validate(['name' => 'required|string|unique:roles']);
         $role = Role::create(['name' => $request->name]);
-        return response()->json($role, 201);
+        return response()->json($role->load('permissions'), 201);
     }
 
     public function updateRole(Request $request, $id)
@@ -33,13 +33,18 @@ class RolePermissionController extends Controller
         $role = Role::findOrFail($id);
         $request->validate(['name' => 'required|string|unique:roles,name,' . $role->id]);
         $role->update(['name' => $request->name]);
-        return response()->json($role);
+        return response()->json($role->load('permissions'));
     }
 
     public function deleteRole($id)
     {
-        Role::findOrFail($id)->delete();
-        return response()->json(null, 204);
+        $role = Role::findOrFail($id);
+        $roleId = $role->id;
+        $role->delete();
+        return response()->json([
+            'message' => 'Role deleted successfully',
+            'id' => $roleId
+        ]);
     }
 
     public function assignPermissionsToRole(Request $request, $roleId)
@@ -80,15 +85,20 @@ class RolePermissionController extends Controller
 
     public function deletePermission($id)
     {
-        Permission::findOrFail($id)->delete();
-        return response()->json(null, 204);
+        $permission = Permission::findOrFail($id);
+        $permissionId = $permission->id;
+        $permission->delete();
+        return response()->json([
+            'message' => 'Permission deleted successfully',
+            'id' => $permissionId
+        ]);
     }
 
     // === USER ROLES & PERMISSIONS ===
     public function getUserRoles($userId)
     {
         $user = User::findOrFail($userId);
-        return response()->json($user->getRoleNames());
+        return response()->json($user->roles);
     }
 
     public function assignRoles(Request $request, $userId)
@@ -102,7 +112,7 @@ class RolePermissionController extends Controller
     public function getUserPermissions($userId)
     {
         $user = User::findOrFail($userId);
-        return response()->json($user->getAllPermissions()->pluck('name'));
+        return response()->json($user->getAllPermissions());
     }
 
     public function assignPermissions(Request $request, $userId)

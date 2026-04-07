@@ -92,6 +92,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Login successful',
+            'user' => auth()->user(),
             'token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth()->factory()->getTTL() * 60
@@ -208,6 +209,9 @@ class AuthController extends Controller
             \Illuminate\Support\Facades\Log::error('Failed to sync password change to user-service: ' . $e->getMessage());
         }
 
-        return response()->json(['message' => 'Password changed successfully.']);
+        return response()->json([
+            'message' => 'Password changed successfully.',
+            'user' => $user
+        ]);
     }
 }
