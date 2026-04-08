@@ -1,112 +1,85 @@
-# 👤 User Service
+# 👤 User Service (Profiles & RBAC)
 
-The User Service manages user profiles, roles, and permissions in the eCommerce microservices architecture. It acts as the source of truth for Role-Based Access Control (RBAC) and provides claims to the Auth Service during JWT generation.
-
----
+The User Service is the **Source of Truth** for user profiles and access levels. It manages the Role-Based Access Control (RBAC) hierarchy and provides security auditing for identity changes.
 
 ## 🛠 Features
 
-- **Profile Management**: CRUD operations for user account information.
-- **Granular RBAC (Spatie)**: 18+ specific permissions for fine-grained access control.
-- **Claims Provider**: Serves internal requests from Auth Service to extract user roles/permissions as JWT claims.
-- **Internal Security**: Validates the `X-Gateway-Secret` for all inter-service requests.
+- **RBAC Engine**: Manages Roles and Permissions using the Spatie Permission system.
+- **Custom Audit Logging**: Automatically tracks every change (Create, Update, Delete) to the User model.
+- **Internal Claims Provider**: Serves the Auth Service with granular roles/permissions for JWT payload creation.
+- **Identity Hardening**: Enforces strict permission checks on all role-assignment operations.
 
 ---
 
-## 📋 Prerequisites
+## 📋 Environment Configuration
 
-- PHP 8.2+
-- Composer
-- SQLite (for local development)
-
----
-
-## ⚙️ Installation & Setup
-
-1. **Install Dependencies**:
-   ```bash
-   composer install
-   ```
-
-2. **Environment Configuration**:
-   Configure the following in your `.env` file:
-   ```ini
-   APP_URL=http://localhost:8002/api
-   
-   # Gateway Security Secret
-   GATEWAY_SECRET=your_strong_gateway_secret_here
-   ```
-
-3. **Database Setup**:
-   ```bash
-   php artisan migrate --seed
-   ```
-
-4. **Start the Service**:
-   ```bash
-   php artisan serve --port=8002
-   ```
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `GATEWAY_SECRET` | Required for all incoming requests (internal or proxied). | Required |
+| `DB_CONNECTION` | Database driver. | `sqlite` |
 
 ---
 
-## 🛡️ Granular Permissions
+## 🎭 RBAC Permissions Catalog
 
-| Category | Permissions |
+The system supports fine-grained control across three domains:
+
+| Domain | Permissions |
 | :--- | :--- |
 | **Users** | `user-list`, `user-view`, `user-create`, `user-update`, `user-delete` |
-| **Roles** | `role-list`, `role-view`, `role-create`, `role-update`, `role-delete`, `role-assign`, `role-manage-permissions` |
-| **Permissions** | `permission-list`, `permission-view`, `permission-create`, `permission-update`, `permission-delete`, `permission-assign` |
+| **Roles** | `role-list`, `role-view`, `role-create`, `role-update`, `role-delete`, `role-assign` |
+| **Permissions**| `permission-list`, `permission-view`, `permission-create`, `permission-manage` |
 
 ---
 
-## 🔌 API Endpoints (Proxied by Gateway)
+## 🔌 API Endpoints (User Service)
 
-### 👤 User Profile Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/users/{id?}`
+All endpoints below require **Both** `X-Gateway-Secret` and suitable permissions in the `X-User-Permissions` header (verified by `CheckPermission` middleware).
 
-- **List Users**: `GET /api/users` (Perm: `user-list`)
-- **Create User**: `POST /api/users` (Perm: `user-create`)
-- **Update User**: `PUT /api/users/{id}` (Perm: `user-update`)
-- **Delete User**: `DELETE /api/users/{id}` (Perm: `user-delete`)
+### 👥 User Management
+| Method | Endpoint | Permission Required | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/users` | `user-list` | List all user profiles. |
+| `POST` | `/users` | `user-create` | Create a new user account. |
+| `GET` | `/users/{id}` | `user-view` | View user profile + audit history. |
+| `PUT` | `/users/{id}` | `user-update` | Update user info (Role-protected). |
 
-### 🎭 Role Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/roles/{id?}`
-
-- **Create Role**: `POST /api/roles` (Perm: `role-create`)
-- **Assign Perms to Role**: `POST /api/roles/{id}/permissions` (Perm: `role-manage-permissions`)
-
-### 🔑 Permission Management
-**Endpoint**: `GET|POST|PUT|DELETE /api/permissions/{id?}`
-
-- **Create Permission**: `POST /api/permissions` (Perm: `permission-create`)
+### 🎭 Role & Permission Management
+| Method | Endpoint | Permission Required | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/roles` | `role-create` | Create a new security role. |
+| `POST` | `/permissions` | `permission-create` | Create a new permission. |
+| `POST` | `/users/{id}/roles`| `role-assign` | Assign roles to a specific user. |
 
 ---
 
-### 🛡️ User RBAC Assignment
+## 🛡 Security Logic: Custom Auditing
 
-#### 1. Assign Roles to User
-**Endpoint**: `POST /api/users/{userId}/roles` (Perm: `role-assign`)
-- **Body**: `{ "roles": ["Admin", "Manager"] }`
+The User Service implements a **Native Audit Broker** that doesn't rely on external packages, ensuring 100% PHP 8.2+ compatibility.
 
-#### 2. Assign Direct Permissions to User
-**Endpoint**: `POST /api/users/{userId}/permissions` (Perm: `permission-assign`)
-- **Body**: `{ "permissions": ["user-list", "user-view"] }`
+### How it works:
+1. The `User` model uses a `booted()` hook to listen for Eloquent events.
+2. For every `created`, `updated`, or `deleted` event, it calls `logAction()`.
+3. It captures:
+   - **Old vs New Values**: Only modified fields are logged for updates.
+   - **Context**: The `X-User-Id` (forwarded by Gateway) who performed the action.
+   - **Metadata**: IP address and User-Agent from the request.
 
 ---
 
-## 🔄 Internal Communication
+## 📦 Usage Examples
 
-### 🔑 Claims Extraction
-**Endpoint**: `GET /api/users/{id}/claims` (Internal)
-This is an internal route used by the **Auth Service** during login to fetch the user's roles and permissions for inclusion in the JWT token.
+### Assigning a Role to a User
+```bash
+# Proxied via Gateway
+curl -X POST http://127.0.0.1:8000/api/users/5/roles \
+     -H "Authorization: Bearer <ADMIN_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{"roles": ["Admin", "Moderator"]}'
+```
 
-- **Returns**:
-  ```json
-  {
-    "roles": ["Admin"],
-    "permissions": ["user-list", "user-view", "role-list"]
-  }
-  ```
-
-> [!IMPORTANT]
-> All users and roles must be created within this service to maintain integrity. The `auth-service` manages password logic, but the `user-service` manages the actual account identity and access levels.
+### Viewing a User (Includes Audit History)
+```bash
+curl -X GET http://127.0.0.1:8000/api/users/5 \
+     -H "Authorization: Bearer <TOKEN>"
+```

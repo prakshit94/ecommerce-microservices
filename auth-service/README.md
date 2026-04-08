@@ -1,130 +1,77 @@
-# 🔐 Auth Service
+# 🔐 Auth Service (Identity & Sessions)
 
-The Auth Service manages user authentication, JWT token generation, and password synchronization in the eCommerce microservices architecture. It acts as the primary source of truth for user identification during login and registration.
-
----
+The Auth Service is the **Identity Provider (IdP)** for the ecosystem. It manages user credentials, JWT lifecycle, and active session monitoring.
 
 ## 🛠 Features
 
-- **JWT Authentication**: Issue, refresh, and invalidate tokens using `tymon/jwt-auth`.
-- **User Registration**: Create new accounts and sync details to the `user-service`.
-- **Password Management**: Change passwords with current credential verification.
-- **Role/Permission Extraction**: Fetches user claims from `user-service` and packs them into the JWT for efficient role checking at the Gateway.
-- **Granular RBAC Integration**: JWT claims now support 18+ specific permissions.
+- **JWT Lifecycle**: Issues secure JWTs with encoded roles and permissions.
+- **Session Tracking**: Stores every active login in the `user_sessions` table for monitoring and revocation.
+- **Instant Revocation**: Supports global logout and specific session termination.
+- **Login History**: Logs every login event (IP, User-Agent, Status).
+- **Password Handshake**: Synchronizes password hashes with `user-service` via secure internal APIs.
 
 ---
 
-## 📋 Prerequisites
+## 📋 Environment Configuration
 
-- PHP 8.2+
-- Composer
-- SQLite (for local development)
-
----
-
-## ⚙️ Installation & Setup
-
-1. **Install Dependencies**:
-   ```bash
-   composer install
-   ```
-
-2. **Environment Configuration**:
-   Configure the following in your `.env` file:
-   ```ini
-   APP_URL=http://localhost:8001/api/auth
-   
-   # Shared Secrets
-   JWT_SECRET=your_jwt_secret_here
-   GATEWAY_SECRET=your_strong_gateway_secret_here
-   
-   # User Service Configuration
-   USER_SERVICE_URL=http://localhost:8002/api
-   ```
-
-3. **Database Setup**:
-   ```bash
-   php artisan migrate --seed
-   ```
-
-4. **Start the Service**:
-   ```bash
-   php artisan serve --port=8001
-   ```
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `JWT_SECRET` | Secret key for signing and verifying tokens. | Required |
+| `GATEWAY_SECRET` | Verified for incoming requests from the Gateway. | Required |
+| `USER_SERVICE_URL` | Used to fetch claims and sync passwords. | `http://127.0.0.1:8002/api` |
 
 ---
 
-## 🧪 Sample Test Personas
+## 🔌 API Endpoints (Auth Service)
 
-Use these pre-configured accounts for testing with different access levels:
+All endpoints below require the `X-Gateway-Secret` header to be present.
 
-| User | Email | Password | Role |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin@example.com` | `admin123` | **Admin** |
-| **Manager** | `manager@example.com` | `password123` | **Manager** |
-| **Editor** | `editor@example.com` | `password123` | **Editor** |
-| **Viewer** | `viewer@example.com` | `password123` | **Viewer** |
+### 🔓 Public Endpoints
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/auth/register` | Create user and sync with User Service. |
+| `POST` | `/auth/login` | Authenticate and create a session. |
+| `POST` | `/auth/validate` | **Internal**: Gateway calls this to check JTI validation. |
 
----
-
-## 🔌 API Endpoints
-
-### 📝 User Registration
-**Endpoint**: `POST /api/auth/register` (Public)
-Creates a user in the local database and synchronizes the record to the `user-service`.
-
-- **Body**:
-  ```json
-  {
-    "name": "Test User",
-    "email": "test@example.com",
-    "password": "password123"
-  }
-  ```
-
-### 🔑 User Login
-**Endpoint**: `POST /api/auth/login` (Public)
-Generates a JWT token containing user ID, email, roles, and permissions.
-
-- **Body**:
-  ```json
-  {
-    "email": "test@example.com",
-    "password": "password123"
-  }
-  ```
-- **Returns**: `{"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."}`
-
-### 👤 Profile (Me)
-**Endpoint**: `GET /api/auth/me` (Protected)
-Returns the authenticated user's profile details. Requires a valid JWT.
-
-### 🛡️ Reset Password
-**Endpoint**: `POST /api/auth/forgot-password` (Public)
-**Endpoint**: `POST /api/auth/reset-password` (Public)
-
-### 💡 Change Password
-**Endpoint**: `POST /api/auth/change-password` (Protected)
-Updates the user's password globally across services.
-
-- **Body**:
-  ```json
-  {
-    "current_password": "old_password_here",
-    "new_password": "new_password_123",
-    "new_password_confirmation": "new_password_123"
-  }
-  ```
+### 🔐 Protected Endpoints (JWT Required)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/auth/sessions` | List all active sessions for the user. |
+| `DELETE`| `/auth/sessions/{id}` | Revoke a specific session (by ID). |
+| `GET` | `/auth/history` | View the user login history log. |
+| `POST` | `/auth/change-password` | Update password globally and revoke all sessions. |
+| `POST` | `/auth/logout` | Revoke the current session. |
 
 ---
 
-## 🔄 Service Synchronization
+## 🛡 Security Logic: Session Management
 
-### User Sync on Registration
-On a successful registration, the Auth Service makes an internal `POST` request to `USER_SERVICE_URL/users` with the user ID and details. This ensures both services stay in sync for profile and RBAC management.
+### 1. Token Creation
+During login, a new `jti` (unique JWT ID) is generated and stored in the `user_sessions` table along with the user's IP address and user agent.
 
-### User Sync on Password Change
-When a password is changed, the Auth Service performs an internal `PUT` request to `USER_SERVICE_URL/users/{id}` to ensure the `user-service` is updated with the new encrypted password hash.
+### 2. Validation Handshake
+When the Gateway forwards a `jti`, this service checks if:
+- The session exists.
+- The session is not expired.
+- The session has not been manually revoked.
 
-> [!IMPORTANT]
-> All inter-service communication requires the `X-Gateway-Secret` header for security.
+### 3. Global Logout (On Password Change)
+When a user changes their password, **all** active records in `user_sessions` for that user are deleted, immediately invalidating all tokens in the wild.
+
+---
+
+## 📦 Usage Examples
+
+### Fetching Active Sessions
+```bash
+# Handled via Gateway
+curl -X GET http://127.0.0.1:8000/api/auth/sessions \
+     -H "Authorization: Bearer <TOKEN>"
+```
+
+### Revoking a Session
+```bash
+# Deletes session ID 42 from the database
+curl -X DELETE http://127.0.0.1:8000/api/auth/sessions/42 \
+     -H "Authorization: Bearer <TOKEN>"
+```

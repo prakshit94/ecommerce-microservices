@@ -24,8 +24,18 @@ class RolePermissionController extends Controller
     public function createRole(Request $request)
     {
         $request->validate(['name' => 'required|string|unique:roles']);
-        $role = Role::create(['name' => $request->name]);
-        return response()->json($role->load('permissions'), 201);
+        try {
+            $role = Role::create([
+                'name' => $request->name,
+                'guard_name' => 'web'
+            ]);
+            return response()->json($role->load('permissions'), 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to create role',
+                'details' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function updateRole(Request $request, $id)
@@ -71,8 +81,18 @@ class RolePermissionController extends Controller
     public function createPermission(Request $request)
     {
         $request->validate(['name' => 'required|string|unique:permissions']);
-        $permission = Permission::create(['name' => $request->name]);
-        return response()->json($permission, 201);
+        try {
+            $permission = Permission::create([
+                'name' => $request->name,
+                'guard_name' => 'web'
+            ]);
+            return response()->json($permission, 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to create permission',
+                'details' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function updatePermission(Request $request, $id)

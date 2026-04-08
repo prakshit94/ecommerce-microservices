@@ -36,8 +36,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'roles' => 'array'
+            'password' => 'required|string|min:6'
         ]);
 
         $user = User::create([
@@ -45,10 +44,6 @@ class UserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
         ]);
-
-        if (isset($validated['roles'])) {
-            $user->syncRoles($validated['roles']);
-        }
 
         return response()->json($user->load('roles', 'permissions'), 201);
     }
@@ -60,8 +55,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|string|email|max:255|unique:users,email,' . $user->id,
-            'password' => 'sometimes|string|min:6',
-            'roles' => 'array'
+            'password' => 'sometimes|string|min:6'
         ]);
 
         if (isset($validated['password'])) {
@@ -69,10 +63,6 @@ class UserController extends Controller
         }
 
         $user->update($validated);
-
-        if (isset($request->roles)) {
-            $user->syncRoles($request->roles);
-        }
 
         return response()->json($user->load('roles', 'permissions'));
     }

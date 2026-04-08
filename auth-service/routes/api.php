@@ -13,6 +13,8 @@ use App\Http\Controllers\AuthController;
 */
 
 // 🔓 Public Routes
+Route::post('/auth/validate', [AuthController::class, 'validateToken']); // Internal but exposed if gateway passes it. Gateway explicitly calls this.
+
 Route::middleware(['gateway.secret'])->group(function () {
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -29,6 +31,11 @@ Route::middleware('auth:api')->prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/refresh', [AuthController::class, 'refresh']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
+    
+    // Session & History
+    Route::get('/sessions', [AuthController::class, 'getSessions']);
+    Route::delete('/sessions/{id}', [AuthController::class, 'revokeSession']);
+    Route::get('/history', [AuthController::class, 'getLoginHistory']);
 
 });
 });

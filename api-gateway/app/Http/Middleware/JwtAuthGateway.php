@@ -28,6 +28,22 @@ class JwtAuthGateway
                 return response()->json(['error' => 'Token not provided'], 401);
             }
 
+            // Centralized session revocation check
+            $jti = $payload->get('jti');
+            if ($jti) {
+                try {
+                    $validationUrl = env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth/validate';
+                    $response = \Illuminate\Support\Facades\Http::timeout(3)
+                        ->post($validationUrl, ['jti' => $jti]);
+                    
+                    if (!$response->successful() || !$response->json('valid')) {
+                        return response()->json(['error' => 'Invalid or Revoked Token', 'message' => 'Session expired or revoked'], 401);
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::warning('Token validation HTTP check failed: ' . $e->getMessage());
+                }
+            }
+
             // Extract claims
             $userId = $payload->get('sub');
             $roles = $payload->get('roles') ?? [];

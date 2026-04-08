@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\LoginHistory;
+use App\Models\UserSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
@@ -56,8 +59,10 @@ class AuthController extends Controller
             return response()->json(['error' => 'Registration failed: user-service unavailable.'], 500);
         }
 
-        // ✅ Generate Token after registration (optional but recommended)
+        // ✅ Generate Token after registration
         $token = JWTAuth::fromUser($user);
+        
+        $this->recordSession($user->id, $token, $request);
 
         return response()->json([
             'message' => 'User registered successfully',
@@ -82,13 +87,33 @@ class AuthController extends Controller
         }
 
         $credentials = $request->only('email', 'password');
+        
+        $user = User::where('email', $request->email)->first();
 
         // ✅ Attempt login
         if (!$token = JWTAuth::attempt($credentials)) {
+            LoginHistory::create([
+                'user_id' => $user ? $user->id : null,
+                'email' => $request->email,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'status' => 'failed'
+            ]);
+            
             return response()->json([
                 'error' => 'Invalid credentials'
             ], 401);
         }
+
+        LoginHistory::create([
+            'user_id' => auth()->id(),
+            'email' => $request->email,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'status' => 'success'
+        ]);
+
+        $this->recordSession(auth()->id(), $token, $request);
 
         return response()->json([
             'message' => 'Login successful',
@@ -96,6 +121,22 @@ class AuthController extends Controller
             'token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth()->factory()->getTTL() * 60
+        ]);
+    }
+    
+    protected function recordSession($userId, $token, Request $request) 
+    {
+        $payload = JWTAuth::setToken($token)->getPayload();
+        $jti = $payload->get('jti');
+        $exp = $payload->get('exp');
+        
+        UserSession::create([
+            'user_id' => $userId,
+            'jti' => $jti,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'is_revoked' => false,
+            'expires_at' => Carbon::createFromTimestamp($exp)
         ]);
     }
 
@@ -112,6 +153,11 @@ class AuthController extends Controller
      */
     public function logout()
     {
+        $payload = JWTAuth::parseToken()->getPayload();
+        $jti = $payload->get('jti');
+        
+        UserSession::where('jti', $jti)->update(['is_revoked' => true]);
+        
         auth()->logout();
 
         return response()->json([
@@ -122,10 +168,16 @@ class AuthController extends Controller
     /**
      * Refresh token
      */
-    public function refresh()
+    public function refresh(Request $request)
     {
+        $oldPayload = JWTAuth::parseToken()->getPayload();
+        UserSession::where('jti', $oldPayload->get('jti'))->update(['is_revoked' => true]);
+        
+        $token = auth()->refresh();
+        $this->recordSession(auth()->id(), $token, $request);
+        
         return response()->json([
-            'token' => auth()->refresh(),
+            'token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth()->factory()->getTTL() * 60
         ]);
@@ -166,9 +218,32 @@ class AuthController extends Controller
             }
         );
 
-        return $status === \Illuminate\Support\Facades\Password::PASSWORD_RESET
-            ? response()->json(['message' => __($status)])
-            : response()->json(['error' => __($status)], 422);
+        if ($status === \Illuminate\Support\Facades\Password::PASSWORD_RESET) {
+            $user = User::where('email', $request->email)->first();
+            
+            // Revoke all existing sessions
+            UserSession::where('user_id', $user->id)->update(['is_revoked' => true]);
+            
+            // Sync to user-service
+            try {
+                $response = \Illuminate\Support\Facades\Http::timeout(5)
+                    ->withHeaders([
+                        'X-Gateway-Secret' => env('GATEWAY_SECRET')
+                    ])
+                    ->put(env('USER_SERVICE_URL', 'http://127.0.0.1:8002/api') . '/users/' . $user->id, [
+                        'password' => $request->password,
+                    ]);
+                if (!$response->successful()) {
+                    \Illuminate\Support\Facades\Log::error('Failed to sync password reset to user-service: ' . $response->body());
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to sync password reset to user-service: ' . $e->getMessage());
+            }
+
+            return response()->json(['message' => __($status)]);
+        }
+        
+        return response()->json(['error' => __($status)], 422);
     }
 
     /**
@@ -192,6 +267,10 @@ class AuthController extends Controller
             'password' => Hash::make($request->new_password)
         ]);
 
+        // Revoke all OTHER sessions (optional: keep current session active)
+        $currentJti = JWTAuth::parseToken()->getPayload()->get('jti');
+        UserSession::where('user_id', $user->id)->where('jti', '!=', $currentJti)->update(['is_revoked' => true]);
+
         // Sync to user-service
         try {
             $response = \Illuminate\Support\Facades\Http::timeout(5)
@@ -213,5 +292,56 @@ class AuthController extends Controller
             'message' => 'Password changed successfully.',
             'user' => $user
         ]);
+    }
+    
+    // --- New Session Management Methods --- //
+    
+    public function getSessions()
+    {
+        $sessions = UserSession::where('user_id', auth()->id())
+                    ->where('is_revoked', false)
+                    ->where('expires_at', '>', now())
+                    ->orderBy('last_used_at', 'desc')
+                    ->get();
+                    
+        return response()->json(['sessions' => $sessions]);
+    }
+    
+    public function revokeSession($id)
+    {
+        $session = UserSession::where('user_id', auth()->id())->findOrFail($id);
+        $session->update(['is_revoked' => true]);
+        
+        return response()->json(['message' => 'Session revoked']);
+    }
+    
+    public function validateToken(Request $request)
+    {
+        $jti = $request->input('jti');
+        if (!$jti) return response()->json(['valid' => false], 400);
+        
+        $session = UserSession::where('jti', $jti)->first();
+        if (!$session || $session->is_revoked || $session->expires_at < now()) {
+            return response()->json(['valid' => false]);
+        }
+        
+        // Update last used at safely
+        try {
+            $session->timestamps = false;
+            $session->last_used_at = now();
+            $session->save();
+        } catch (\Exception $e) {}
+        
+        return response()->json(['valid' => true]);
+    }
+    
+    public function getLoginHistory()
+    {
+        $history = LoginHistory::where('user_id', auth()->id())
+                   ->orderBy('created_at', 'desc')
+                   ->limit(50)
+                   ->get();
+                   
+        return response()->json(['history' => $history]);
     }
 }
