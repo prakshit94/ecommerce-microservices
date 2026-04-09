@@ -47,16 +47,25 @@ function proxyRequest(Request $request, string $baseUrl, string $path): Response
     return response($response->body(), $response->status(), $responseHeaders);
 }
 
-// 🔓 Public Routes Proxy (Auth Service)
-Route::any('/auth/{any?}', function (Request $request, $any = '') {
-    $baseUrl = env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth';
-    return proxyRequest($request, $baseUrl, $any);
-})->where('any', '.*');
+// 🔓 Public Routes Proxy (Auth Service - Restricted)
+Route::post('/auth/login', function (Request $request) {
+    return proxyRequest($request, env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth', 'login');
+});
+
+Route::post('/auth/forgot-password', function (Request $request) {
+    return proxyRequest($request, env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth', 'forgot-password');
+});
 
 
-// 🔐 Protected Routes Proxy (User Service)
+// 🔐 Protected Routes Proxy (Enforced by Gateway)
 Route::middleware([\App\Http\Middleware\JwtAuthGateway::class])->group(function () {
     
+    // Protected Auth Proxy (register, reset-password, me, logout, sessions, history)
+    Route::any('/auth/{any?}', function (Request $request, $any = '') {
+        $baseUrl = env('AUTH_SERVICE_URL', 'http://127.0.0.1:8001/api') . '/auth';
+        return proxyRequest($request, $baseUrl, $any);
+    })->where('any', '.*');
+
     Route::any('/users/{any?}', function (Request $request, $any = '') {
         // 🚨 Block data leakage
         if (preg_match('/^\d+\/claims$/', $any)) {
