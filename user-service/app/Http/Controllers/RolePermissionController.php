@@ -2,144 +2,230 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\RoleResource;
 use App\Models\User;
+use App\Services\PermissionCacheService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
+/**
+ * RolePermissionController — Enterprise RBAC Management
+ *
+ * Full CRUD for Roles and Permissions using Spatie v6.
+ * Fixed guard_name to 'api' (was incorrectly 'web').
+ * Includes bulk permission assignment and permission cache invalidation.
+ */
 class RolePermissionController extends Controller
 {
-    // === ROLES ===
-    public function getRoles()
+    private string $guard = 'api';
+
+    public function __construct(
+        private readonly PermissionCacheService $permissionCache,
+    ) {}
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ROLES
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function getRoles(): JsonResponse
     {
-        return response()->json(Role::with('permissions')->get());
+        $roles = Role::with('permissions')
+            ->withCount('users')
+            ->where('guard_name', $this->guard)
+            ->get();
+
+        return response()->json(RoleResource::collection($roles));
     }
 
-    public function showRole($id)
+    public function showRole(int $id): JsonResponse
     {
-        $role = Role::with('permissions')->findOrFail($id);
-        return response()->json($role);
+        $role = Role::with('permissions')
+            ->withCount('users')
+            ->where('guard_name', $this->guard)
+            ->findOrFail($id);
+
+        return response()->json(new RoleResource($role));
     }
 
-    public function createRole(Request $request)
+    public function createRole(Request $request): JsonResponse
     {
-        $request->validate(['name' => 'required|string|unique:roles']);
+        $request->validate([
+            'name'        => 'required|string|max:100|unique:roles,name',
+            'permissions' => 'sometimes|array',
+            'permissions.*' => 'string|exists:permissions,name',
+        ]);
+
         try {
             $role = Role::create([
-                'name' => $request->name,
-                'guard_name' => 'web'
+                'name'       => $request->name,
+                'guard_name' => $this->guard,
             ]);
-            return response()->json($role->load('permissions'), 201);
+
+            if ($request->has('permissions')) {
+                $role->syncPermissions($request->permissions);
+            }
+
+            $this->permissionCache->invalidateAll();
+
+            return response()->json(new RoleResource($role->load('permissions')), 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to create role',
-                'details' => $e->getMessage()
-            ], 500);
+            return response()->json(['error' => 'Failed to create role.', 'details' => $e->getMessage()], 500);
         }
     }
 
-    public function updateRole(Request $request, $id)
+    public function updateRole(Request $request, int $id): JsonResponse
     {
-        $role = Role::findOrFail($id);
-        $request->validate(['name' => 'required|string|unique:roles,name,' . $role->id]);
+        $role = Role::where('guard_name', $this->guard)->findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:100|unique:roles,name,' . $role->id,
+        ]);
+
         $role->update(['name' => $request->name]);
-        return response()->json($role->load('permissions'));
+        $this->permissionCache->invalidateAll();
+
+        return response()->json(new RoleResource($role->load('permissions')));
     }
 
-    public function deleteRole($id)
+    public function deleteRole(int $id): JsonResponse
     {
-        $role = Role::findOrFail($id);
+        $role = Role::where('guard_name', $this->guard)->findOrFail($id);
         $roleId = $role->id;
         $role->delete();
-        return response()->json([
-            'message' => 'Role deleted successfully',
-            'id' => $roleId
-        ]);
+        $this->permissionCache->invalidateAll();
+
+        return response()->json(['message' => 'Role deleted successfully.', 'id' => $roleId]);
     }
 
-    public function assignPermissionsToRole(Request $request, $roleId)
+    public function assignPermissionsToRole(Request $request, int $roleId): JsonResponse
     {
-        $request->validate(['permissions' => 'required|array']);
-        $role = Role::findOrFail($roleId);
+        $request->validate(['permissions' => 'required|array', 'permissions.*' => 'string']);
+        $role = Role::where('guard_name', $this->guard)->findOrFail($roleId);
         $role->syncPermissions($request->permissions);
-        
-        return response()->json($role->load('permissions'));
+        $this->permissionCache->invalidateAll();
+
+        return response()->json(new RoleResource($role->load('permissions')));
     }
 
-    // === PERMISSIONS ===
-    public function getPermissions()
+    // ─────────────────────────────────────────────────────────────────────────
+    // PERMISSIONS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function getPermissions(): JsonResponse
     {
-        return response()->json(Permission::all());
+        $permissions = Permission::where('guard_name', $this->guard)
+            ->orderBy('name')
+            ->get()
+            ->groupBy(function ($p) {
+                // Group by prefix (e.g., 'user-list' → group 'user')
+                return explode('-', $p->name)[0];
+            })
+            ->map(fn($group) => $group->map(fn($p) => ['id' => $p->id, 'name' => $p->name]));
+
+        return response()->json(['permissions' => $permissions]);
     }
 
-    public function showPermission($id)
+    public function showPermission(int $id): JsonResponse
     {
-        $permission = Permission::findOrFail($id);
+        $permission = Permission::where('guard_name', $this->guard)->findOrFail($id);
         return response()->json($permission);
     }
 
-    public function createPermission(Request $request)
+    public function createPermission(Request $request): JsonResponse
     {
-        $request->validate(['name' => 'required|string|unique:permissions']);
+        $request->validate(['name' => 'required|string|unique:permissions,name']);
+
         try {
             $permission = Permission::create([
-                'name' => $request->name,
-                'guard_name' => 'web'
+                'name'       => $request->name,
+                'guard_name' => $this->guard,
             ]);
+
+            $this->permissionCache->invalidateAll();
+
             return response()->json($permission, 201);
         } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to create permission',
-                'details' => $e->getMessage()
-            ], 500);
+            return response()->json(['error' => 'Failed to create permission.', 'details' => $e->getMessage()], 500);
         }
     }
 
-    public function updatePermission(Request $request, $id)
+    public function updatePermission(Request $request, int $id): JsonResponse
     {
-        $permission = Permission::findOrFail($id);
+        $permission = Permission::where('guard_name', $this->guard)->findOrFail($id);
         $request->validate(['name' => 'required|string|unique:permissions,name,' . $permission->id]);
         $permission->update(['name' => $request->name]);
+        $this->permissionCache->invalidateAll();
+
         return response()->json($permission);
     }
 
-    public function deletePermission($id)
+    public function deletePermission(int $id): JsonResponse
     {
-        $permission = Permission::findOrFail($id);
+        $permission = Permission::where('guard_name', $this->guard)->findOrFail($id);
         $permissionId = $permission->id;
         $permission->delete();
+        $this->permissionCache->invalidateAll();
+
+        return response()->json(['message' => 'Permission deleted.', 'id' => $permissionId]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // USER ROLE & PERMISSION ASSIGNMENTS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function getUserRoles(int $userId): JsonResponse
+    {
+        $user = User::findOrFail($userId);
+        return response()->json(RoleResource::collection($user->roles));
+    }
+
+    public function assignRoles(Request $request, int $userId): JsonResponse
+    {
+        $request->validate([
+            'roles'   => 'required|array',
+            'roles.*' => 'string|exists:roles,name',
+        ]);
+
+        $user = User::findOrFail($userId);
+        $user->syncRoles($request->roles);
+        $this->permissionCache->invalidateUser($userId);
+
         return response()->json([
-            'message' => 'Permission deleted successfully',
-            'id' => $permissionId
+            'message' => 'Roles assigned successfully.',
+            'user_id' => $userId,
+            'roles'   => RoleResource::collection($user->load('roles')->roles),
         ]);
     }
 
-    // === USER ROLES & PERMISSIONS ===
-    public function getUserRoles($userId)
+    public function getUserPermissions(int $userId): JsonResponse
     {
         $user = User::findOrFail($userId);
-        return response()->json($user->roles);
+        $permissions = $this->permissionCache->getUserPermissions($userId);
+
+        return response()->json([
+            'user_id'     => $userId,
+            'permissions' => $permissions,
+        ]);
     }
 
-    public function assignRoles(Request $request, $userId)
+    public function assignPermissions(Request $request, int $userId): JsonResponse
     {
-        $request->validate(['roles' => 'required|array']);
-        $user = User::findOrFail($userId);
-        $user->syncRoles($request->roles);
-        return response()->json($user->load('roles'));
-    }
+        $request->validate([
+            'permissions'   => 'required|array',
+            'permissions.*' => 'string|exists:permissions,name',
+        ]);
 
-    public function getUserPermissions($userId)
-    {
-        $user = User::findOrFail($userId);
-        return response()->json($user->getAllPermissions());
-    }
-
-    public function assignPermissions(Request $request, $userId)
-    {
-        $request->validate(['permissions' => 'required|array']);
         $user = User::findOrFail($userId);
         $user->syncPermissions($request->permissions);
-        return response()->json($user->load('permissions'));
+        $this->permissionCache->invalidateUser($userId);
+
+        return response()->json([
+            'message'     => 'Permissions assigned successfully.',
+            'user_id'     => $userId,
+            'permissions' => $user->getAllPermissions()->pluck('name'),
+        ]);
     }
 }

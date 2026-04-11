@@ -187,7 +187,9 @@ return [
          * When permissions or roles are updated the cache is flushed automatically.
          */
 
-        'expiration_time' => DateInterval::createFromDateString('24 hours'),
+        'expiration_time' => DateInterval::createFromDateString(
+            env('PERMISSION_CACHE_EXPIRATION_SECONDS', 3600) . ' seconds'
+        ),
 
         /*
          * The cache key used to store all permissions.
@@ -196,11 +198,10 @@ return [
         'key' => 'spatie.permission.cache',
 
         /*
-         * You may optionally indicate a specific cache driver to use for permission and
-         * role caching using any of the `store` drivers listed in the cache.php config
-         * file. Using 'default' here means to use the `default` set in cache.php.
+         * Use Redis as the cache store for permission caching.
+         * This provides faster lookups than database-backed cache.
          */
 
-        'store' => 'default',
+        'store' => env('PERMISSION_CACHE_STORE', 'default'),
     ],
 ];

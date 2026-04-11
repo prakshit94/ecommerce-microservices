@@ -2,83 +2,118 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use App\Models\AuditLog;
 use Illuminate\Support\Facades\Request;
 
+/**
+ * User Service User Model
+ *
+ * Handles RBAC (roles + permissions via Spatie), organization membership,
+ * team membership, and structured audit logging.
+ * Guard is 'api' to align with JWT/API-first architecture.
+ */
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, Notifiable, HasRoles, SoftDeletes;
 
     /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
+     * Spatie roles/permissions use 'api' guard in an API-first service.
      */
+    protected string $guard_name = 'api';
+
     protected $fillable = [
         'name',
         'email',
         'password',
+        'organization_id',
+        'status',
+        'is_super_admin',
+        'phone',
+        'profile_photo_url',
+        'timezone',
+        'last_login_at',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'last_login_at'     => 'datetime',
+            'password'          => 'hashed',
+            'is_super_admin'    => 'boolean',
         ];
     }
 
-    protected static function booted()
+    // ─────────────────────────────────────────────────────────────────────────
+    // Relations
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function organization()
     {
-        static::created(function ($user) {
-            self::logAction('created', $user);
-        });
-
-        static::updated(function ($user) {
-            self::logAction('updated', $user);
-        });
-
-        static::deleted(function ($user) {
-            self::logAction('deleted', $user);
-        });
+        return $this->belongsTo(Organization::class);
     }
 
-    protected static function logAction($event, $model)
+    public function teams()
+    {
+        return $this->belongsToMany(Team::class, 'team_user')
+            ->withPivot('role_in_team')
+            ->withTimestamps();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Audit Logging (model observer pattern)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    protected static function booted(): void
+    {
+        static::created(fn($u) => self::logAction('created', $u));
+        static::updated(fn($u) => self::logAction('updated', $u));
+        static::deleted(fn($u) => self::logAction('deleted', $u));
+    }
+
+    protected static function logAction(string $event, User $model): void
     {
         try {
             AuditLog::create([
-                'user_id' => request()->header('X-User-Id'), // Forwarded by Gateway
-                'event' => $event,
-                'auditable_type' => get_class($model),
-                'auditable_id' => $model->id,
-                'old_values' => $event === 'updated' ? array_intersect_key($model->getOriginal(), $model->getChanges()) : null,
-                'new_values' => $event === 'deleted' ? null : ($model->getChanges() ?: $model->getAttributes()),
-                'ip_address' => request()->ip(),
-                'user_agent' => request()->userAgent(),
+                'user_id'        => Request::header('X-User-Id'),
+                'event'          => $event,
+                'auditable_type' => self::class,
+                'auditable_id'   => $model->id,
+                'old_values'     => $event === 'updated'
+                    ? array_intersect_key($model->getOriginal(), $model->getChanges())
+                    : null,
+                'new_values'     => $event === 'deleted'
+                    ? null
+                    : ($model->getChanges() ?: $model->getAttributes()),
+                'ip_address'     => Request::ip(),
+                'user_agent'     => Request::userAgent(),
             ]);
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::warning('Audit logging failed: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning('Audit log failed: ' . $e->getMessage());
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scopes
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeForOrganization($query, int $orgId)
+    {
+        return $query->where('organization_id', $orgId);
     }
 }

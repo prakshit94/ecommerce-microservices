@@ -16,7 +16,7 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
+        'guard' => env('AUTH_GUARD', 'api'),  // API-first — must match Spatie guard_name
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
@@ -39,6 +39,12 @@ return [
 
     'guards' => [
         'web' => [
+            'driver' => 'session',
+            'provider' => 'users',
+        ],
+
+        // API guard — stateless, used by Spatie for RBAC in this service
+        'api' => [
             'driver' => 'session',
             'provider' => 'users',
         ],
